@@ -36,6 +36,8 @@
 
 using namespace std;
 
+#include "SlamData.h"
+
 class ImageGrabber
 {
 public:
@@ -46,6 +48,7 @@ public:
     ORB_SLAM2::System* mpSLAM;
     bool do_rectify;
     cv::Mat M1l,M2l,M1r,M2r;
+    ORB_SLAM2::SlamData* mpSLAMDATA;
 };
 
 int main(int argc, char **argv)
@@ -58,7 +61,7 @@ int main(int argc, char **argv)
         cerr << endl << "Usage: rosrun ORB_SLAM2 Stereo path_to_vocabulary path_to_settings do_rectify" << endl;
         ros::shutdown();
         return 1;
-    }    
+    }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::STEREO,true);
@@ -69,7 +72,7 @@ int main(int argc, char **argv)
 	ss >> boolalpha >> igb.do_rectify;
 
     if(igb.do_rectify)
-    {      
+    {
         // Load settings related to stereo calibration
         cv::FileStorage fsSettings(argv[2], cv::FileStorage::READ);
         if(!fsSettings.isOpened())
@@ -155,18 +158,31 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,const se
         return;
     }
 
+    mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_CV_PROCESS);
+
+    cv::Mat trackingCurrentFrame;
     if(do_rectify)
     {
         cv::Mat imLeft, imRight;
         cv::remap(cv_ptrLeft->image,imLeft,M1l,M2l,cv::INTER_LINEAR);
         cv::remap(cv_ptrRight->image,imRight,M1r,M2r,cv::INTER_LINEAR);
-        mpSLAM->TrackStereo(imLeft,imRight,cv_ptrLeft->header.stamp.toSec());
+        trackingCurrentFrame = mpSLAM->TrackStereo(imLeft,imRight,cv_ptr->header.stamp.toSec());
     }
     else
     {
-        mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
+        trackingCurrentFrame = mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
     }
 
+    mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_SLAM_PROCESS);
+
+    mpSLAMDATA->CalculateAndPrintOutProcessingFrequency();
+
+    if (trackingCurrentFrame.empty()) {
+      cout<< endl<< "-------------------no tracking------------------" << endl;
+      return;
+    }
+
+    mpSLAMDATA->PublishTFForROS(trackingCurrentFrame, cv_ptrLeft);
+    mpSLAMDATA->PublishPoseForROS(cv_ptrLeft);
+
 }
-
-

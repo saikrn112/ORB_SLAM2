@@ -68,14 +68,14 @@ ${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM2.so
 )
 
 # Node for monocular camera
-rosbuild_add_executable(Mono
-lib/SlamData.cc
-src/ros_mono.cc
-)
-
-target_link_libraries(Mono
-${LIBS}
-)
+# rosbuild_add_executable(Mono
+# lib/SlamData.cc
+# src/ros_mono.cc
+# )
+#
+# target_link_libraries(Mono
+# ${LIBS}
+# )
 
 # Node for monocular camera (Augmented Reality Demo)
 # rosbuild_add_executable(MonoAR
@@ -88,14 +88,15 @@ ${LIBS}
 # ${LIBS}
 # )
 #
-# # Node for stereo camera
-# rosbuild_add_executable(Stereo
-# src/ros_stereo.cc
-# )
-#
-# target_link_libraries(Stereo
-# ${LIBS}
-# )
+# Node for stereo camera
+rosbuild_add_executable(Stereo
+lib/SlamData.cc
+src/ros_stereo.cc
+)
+
+target_link_libraries(Stereo
+${LIBS}
+)
 #
 # # Node for RGB-D camera
 # rosbuild_add_executable(RGBD
