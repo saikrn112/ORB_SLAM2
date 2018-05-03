@@ -24,7 +24,10 @@
 #include<fstream>
 #include<chrono>
 
+#include<tf/transform_broadcaster.h>
+
 #include<ros/ros.h>
+#include "../../../include/Converter.h"
 #include <cv_bridge/cv_bridge.h>
 
 #include<opencv2/core/core.hpp>
@@ -33,14 +36,21 @@
 
 using namespace std;
 
+#include "SlamData.h"
+
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){}
+    ImageGrabber(ORB_SLAM2::System* pSLAM, ORB_SLAM2::SlamData* pSLAMDATA):
+    mpSLAM(pSLAM),
+    mpSLAMDATA(pSLAMDATA)
+    {}
 
     void GrabImage(const sensor_msgs::ImageConstPtr& msg);
 
     ORB_SLAM2::System* mpSLAM;
+
+    ORB_SLAM2::SlamData* mpSLAMDATA;
 };
 
 int main(int argc, char **argv)
@@ -50,17 +60,21 @@ int main(int argc, char **argv)
 
     if(argc != 3)
     {
-        cerr << endl << "Usage: rosrun ORB_SLAM2 Mono path_to_vocabulary path_to_settings" << endl;        
+        cerr << endl << "Usage: rosrun ORB_SLAM2 Mono path_to_vocabulary path_to_settings" << endl;
         ros::shutdown();
         return 1;
-    }    
+    }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::MONOCULAR,true);
 
-    ImageGrabber igb(&SLAM);
 
     ros::NodeHandle nodeHandler;
+
+    ORB_SLAM2::SlamData SLAMDATA(&SLAM, &nodeHandler, true);
+
+    ImageGrabber igb(&SLAM,&SLAMDATA);
+
     ros::Subscriber sub = nodeHandler.subscribe("/camera/image_raw", 1, &ImageGrabber::GrabImage,&igb);
 
     ros::spin();
@@ -90,7 +104,22 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         return;
     }
 
-    mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
+    mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_CV_PROCESS);
+
+    cv::Mat trackingCurrentFrame = mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
+
+    mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_SLAM_PROCESS);
+
+    mpSLAMDATA->CalculateAndPrintOutProcessingFrequency();
+
+    if (trackingCurrentFrame.empty()) {
+      cout<< endl<< "-------------------no tracking------------------" << endl;
+      return;
+    }
+
+    mpSLAMDATA->PublishTFForROS(trackingCurrentFrame, cv_ptr);
+    mpSLAMDATA->PublishPoseForROS(cv_ptr);
+    // mpSLAMDATA->PublishPointCloudForROS();
+    // mpSLAMDATA->PublishCurrentFrameForROS();
+
 }
-
-
