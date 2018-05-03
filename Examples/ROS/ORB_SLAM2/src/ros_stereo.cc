@@ -34,6 +34,7 @@
 
 #include"../../../include/System.h"
 
+ros::Publisher pose_pub;
 using namespace std;
 
 #include "SlamData.h"
@@ -48,7 +49,7 @@ public:
     ORB_SLAM2::System* mpSLAM;
     bool do_rectify;
     cv::Mat M1l,M2l,M1r,M2r;
-    ORB_SLAM2::SlamData* mpSLAMDATA;
+    // ORB_SLAM2::SlamData* mpSLAMDATA;
 };
 
 int main(int argc, char **argv)
@@ -112,11 +113,14 @@ int main(int argc, char **argv)
 
     ros::NodeHandle nh;
 
+    // ORB_SLAM2::SlamData SLAMDATA(&SLAM, &nh, true);
+
     message_filters::Subscriber<sensor_msgs::Image> left_sub(nh, "/camera/left/image_raw", 1);
     message_filters::Subscriber<sensor_msgs::Image> right_sub(nh, "camera/right/image_raw", 1);
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), left_sub,right_sub);
     sync.registerCallback(boost::bind(&ImageGrabber::GrabStereo,&igb,_1,_2));
+    pose_pub = nh.advertise<geometry_msgs::PoseStamped>("posestamped", 1000);
 
     ros::spin();
 
@@ -158,31 +162,50 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,const se
         return;
     }
 
-    mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_CV_PROCESS);
+    // mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_CV_PROCESS);
 
-    cv::Mat trackingCurrentFrame;
+    cv::Mat Tcw;
     if(do_rectify)
     {
         cv::Mat imLeft, imRight;
         cv::remap(cv_ptrLeft->image,imLeft,M1l,M2l,cv::INTER_LINEAR);
         cv::remap(cv_ptrRight->image,imRight,M1r,M2r,cv::INTER_LINEAR);
-        trackingCurrentFrame = mpSLAM->TrackStereo(imLeft,imRight,cv_ptr->header.stamp.toSec());
+        Tcw = mpSLAM->TrackStereo(imLeft,imRight,cv_ptrLeft->header.stamp.toSec());
     }
     else
     {
-        trackingCurrentFrame = mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
+        Tcw = mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
     }
 
-    mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_SLAM_PROCESS);
+    // mpSLAMDATA->SaveTimePoint(ORB_SLAM2::SlamData::TimePointIndex::TIME_FINISH_SLAM_PROCESS);
+    //
+    // mpSLAMDATA->CalculateAndPrintOutProcessingFrequency();
 
-    mpSLAMDATA->CalculateAndPrintOutProcessingFrequency();
-
-    if (trackingCurrentFrame.empty()) {
+    if (Tcw.empty()) {
       cout<< endl<< "-------------------no tracking------------------" << endl;
       return;
     }
 
-    mpSLAMDATA->PublishTFForROS(trackingCurrentFrame, cv_ptrLeft);
-    mpSLAMDATA->PublishPoseForROS(cv_ptrLeft);
+    cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
+    cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);
+
+    vector<float> q = ORB_SLAM2::Converter::toQuaternion(Rwc);
+
+    static tf::TransformBroadcaster br;
+    tf::Transform new_transform, last_transform;
+
+    new_transform.setOrigin(tf::Vector3(twc.at<float>(0, 0) * MAP_SCALE, twc.at<float>(0, 1) * MAP_SCALE, twc.at<float>(0, 2) * MAP_SCALE));
+
+    br.sendTransform(tf::StampedTransform(new_transform, ros::Time(cv_ptrLeft->header.stamp.toSec()), "world", "ORB_SLAM2"));
+
+    tf::Quaternion tf_quaternion(q[0], q[1], q[2], q[3]);
+
+    new_transform.setRotation(tf_quaternion);
+    geometry_msgs::PoseStamped pose;
+    pose.header.stamp = ros::Time::now();
+    pose.header.frame_id ="world";
+    tf::poseTFToMsg(new_transform, pose.pose);
+    ROS_INFO_STREAM("pose" <<pose);
+    pose_pub.publish(pose);
 
 }

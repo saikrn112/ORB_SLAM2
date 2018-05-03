@@ -90,7 +90,7 @@ ${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM2.so
 #
 # Node for stereo camera
 rosbuild_add_executable(Stereo
-lib/SlamData.cc
+# lib/SlamData.cc
 src/ros_stereo.cc
 )
 
