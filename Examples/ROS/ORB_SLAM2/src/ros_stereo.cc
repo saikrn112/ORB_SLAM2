@@ -196,14 +196,14 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,const se
 
     new_transform.setOrigin(tf::Vector3(twc.at<float>(0, 0) * MAP_SCALE, twc.at<float>(0, 1) * MAP_SCALE, twc.at<float>(0, 2) * MAP_SCALE));
 
-    br.sendTransform(tf::StampedTransform(new_transform, ros::Time(cv_ptrLeft->header.stamp.toSec()), "world", "ORB_SLAM2"));
+    br.sendTransform(tf::StampedTransform(new_transform, ros::Time(cv_ptrLeft->header.stamp.toSec()), "map", "orb"));
 
     tf::Quaternion tf_quaternion(q[0], q[1], q[2], q[3]);
 
     new_transform.setRotation(tf_quaternion);
     geometry_msgs::PoseStamped pose;
     pose.header.stamp = ros::Time::now();
-    pose.header.frame_id ="world";
+    pose.header.frame_id ="map";
     tf::poseTFToMsg(new_transform, pose.pose);
     ROS_INFO_STREAM("pose" <<pose);
     pose_pub.publish(pose);
